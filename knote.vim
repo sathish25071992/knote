@@ -2,6 +2,7 @@ let s:KnoteNotebookArrowClose = '▸'
 let s:KnoteNotebookArrowOpen = '▾'
 let s:KnoteNotebookArrow = [s:KnoteNotebookArrowClose, s:KnoteNotebookArrowOpen]
 let s:rootpath = "~/utils/knote/"
+let s:KnoteTree = {}
 
 let s:banner = [
 \	"Welcome to the KNote - A simple note taking Plugin",
@@ -12,12 +13,11 @@ let s:banner = [
 \	" ",
 \	"Available shortcuts:",
 \	"    \\n - Create new note            ",
+\	"    \\N - Create new notebook        ",
 \	"    \\r - Rename the existing note   ",
 \	"    \\d - Delete the existing note   ",
 \	"    \\t - To terminal the application" 
 \]
-
-let s:KnoteTree = {}
 
 function! KnoteCreateNew()
     call inputsave()
@@ -39,55 +39,55 @@ function! KnoteCreateNew()
     call KnoteListRender()
 endfunction    
 
-function! KnoteDeleteNote()
+function! KnoteCreateNotebook()
+    call inputsave()
+    let notebook = input('Enter the notebook name to create: ')
+    call inputrestore()
+    call mkdir(fnamemodify(s:rootpath.'/'.notebook, ':p'))
+    call UpdateList()
+    call KnoteListRender()
+endfunction
+
+function! KnoteDeleteNote(filename)
     if win_getid() != s:statuswin
-        let currentfilename = expand('%:p')
         silent execute win_id2win(s:mainwin).'q'
-        call delete(currentfilename)
-        echo "Deleted the note ".currentfilename
-        call UpdateList()
-        call KnoteListRender()
     endif
+    call delete(filename)
+    echo "Deleted the note ".filename
+    call UpdateList()
+    call KnoteListRender()
 endfunction
 
 function! KnoteRenameNote()
+    let bufnm = bufname(bufnr('%'))
+
     silent call inputsave()
     let name = input('Rename note to: ')
     silent call inputrestore()
-    let bufnm = bufname(bufnr('%'))
    
     call rename(expand('%:p'), name)
     
     silent execute 'edit '.expand('%:p:h') .'/'.name
     silent execute 'bwipeout '.bufnm
-    silent autocmd QuitPre <buffer> :let s:closeflag = 1
-    silent autocmd BufWinLeave <buffer> :call BufferWindowLeave()
-
+    autocmd QuitPre <buffer> :let s:closeflag = 1
+    autocmd BufWinLeave <buffer> :call BufferWindowLeave()
     call UpdateList()
     call KnoteListRender()
 endfunction
 
 function! UpdateList()
-    let notebooks = systemlist("ls -p " . s:rootpath . " | grep /$")
-    call map(notebooks, {_, x -> x[:-2]})
-    let notes = systemlist("ls -p " . s:rootpath . " | grep -v /$")
-    if empty(s:KnoteTree)
-        let firsttime = 1
-    else
-        let firsttime = 0
-    endif
-    for x in notebooks
-        if firsttime
-            let s:KnoteTree[x] = {"notes": systemlist("ls -p ".s:rootpath.x." | grep -v /$"), "open": 0}
-        else
-            let s:KnoteTree[x].notes = systemlist("ls -p ".s:rootpath.x." | grep -v /$")
-        endif
+    let l:KnoteTree = {
+                \ "General": {
+                \   "notes": systemlist("ls -p " . s:rootpath . "|grep -v /$"),
+                \   "open": exists("s:KnoteTree['General']")? s:KnoteTree['General'].open: 1}}
+    for x in systemlist("ls -p " . s:rootpath . " | grep /$")
+        let x = x[:-2]
+        let l:KnoteTree[x] = {
+                    \ "notes": systemlist("ls -p ".s:rootpath.x."|grep -v /$"),
+                    \ "open": exists("s:KnoteTree[x]")? s:KnoteTree[x].open: 0}
     endfor
-    if firsttime
-        let s:KnoteTree["General"] = {"notes": notes, "open": 1}
-    else
-        let s:KnoteTree["General"].notes = notes
-    endif
+    unlet s:KnoteTree
+    let s:KnoteTree = l:KnoteTree
 endfunction
 
 function! KnoteListRender()
@@ -152,7 +152,7 @@ function! KnotePopulateBanner(win, list)
     silent let s:bannerbuf = KnoteSetdefaultBuf()
     silent setlocal noreadonly modifiable
     silent silent 1,$delete _
-    
+ 
     silent let lines = len(a:list)
     silent let height = winheight(0)
     silent let width = winwidth(0)
@@ -164,6 +164,7 @@ function! KnotePopulateBanner(win, list)
     silent setlocal readonly nomodifiable
     silent let &l:statusline = " "
     silent autocmd BufEnter <buffer> :call win_gotoid(s:statuswin)
+    let m = matchadd("Function", '\\[a-zA-Z] ')
     silent call win_gotoid(s:statuswin)
 endfunction
 
@@ -172,6 +173,7 @@ let s:closeflag = 0
 function! BufferWindowLeave()
     if s:closeflag && win_getid() != s:statuswin
         silent execute 'sbuffer' . s:bannerbuf
+        let m = matchadd("Function", '\\[a-zA-Z] ')
         silent let s:closeflag = 0
         silent let s:mainwin = win_getid()
     endif
@@ -189,37 +191,65 @@ function! KnoteMainRender(line)
     silent autocmd BufWinLeave <buffer> :call BufferWindowLeave()
 endfunction
 
+function! KnoteFindFilePath()
+    let lineno = line('.')
+    let cnt = 0
+    let line = getline(lineno)
+    for [notebook, entry] in items(s:KnoteTree)
+        let cnt += entry.open? len(entry.notes) + 1: 1
+        if line == s:KnoteNotebookArrow[entry.open]." ".notebook
+            let path = (notebook == "General")? "/" : notebook."/"
+            return {"type": "nb", "path": s:rootpath.path, "notebook": notebook}
+        elseif entry.open && count(entry.notes, trim(line)) && lineno <= cnt
+            let notebook = (notebook == "General")? "/" : notebook."/"
+            return {"type": "n", "path": s:rootpath.notebook, "file": trim(line)}
+        endif
+    endfor
+endfunction
 
 function! KnoteOpen()
     let lineno = line('.')
     let cnt = 0
     silent let line = getline(lineno)
-    silent let notedirectory = s:rootpath
 
-    for [notebook, entry] in items(s:KnoteTree)
-        let cnt += 1
-        if entry.open
-            let cnt += len(entry.notes)
-        endif
-        if line == s:KnoteNotebookArrow[entry.open]." ".notebook
-            let s:KnoteTree[notebook].open = !s:KnoteTree[notebook].open
-            let line = "u"
-            break
-        elseif entry.open && count(entry.notes, trim(line)) && lineno <= cnt
-            if notebook == "General"
-                let line = s:rootpath . trim(line)
-            else
-                let line = s:rootpath . notebook . "/" . trim(line)
-                silent execute "cd " . notedirectory . "/" . notebook
-            endif
-            break
-        endif
-    endfor
-    if line == "u"
+    let res = KnoteFindFilePath()
+    if res["type"] == "nb"
+        let s:KnoteTree[res["notebook"]].open = !s:KnoteTree[res["notebook"]].open
         call KnoteListRender()
+    else
+        silent execute "cd ".res["path"]
+        call KnoteMainRender(res["path"].res["file"])
+    endif
+endfunction
+
+function KnoteDelete()
+    let line = getline(line('.'))
+    let res = KnoteFindFilePath()
+    let ret = 0
+    if res["type"] == "nb"
+        if res["notebook"] == "General"
+            echo "Can't delete the default notebook"
+            return
+        endif
+        if delete(fnamemodify(res["path"], ":p"), "d") < 0
+            call inputsave()
+            let confirm = input("Directory is not empty. Please Type 'yes' to confirm to delete? ")
+            if confirm != "yes"
+                return
+            endif
+            call inputrestore()
+            let ret = delete(fnamemodify(res["path"], ":p"), "rf")
+        endif
+        echo " | Removed ".res["path"]
+    else
+        let ret = delete(fnamemodify(res["path"].res["file"], ":p"))
+    endif
+    if ret < 0
+        echo "Unable to delete note/notebook ".line
         return
     endif
-    call KnoteMainRender(line)
+    call UpdateList()
+    call KnoteListRender()
 endfunction
 
 vertical new
@@ -234,6 +264,7 @@ cnoreabbrev <buffer> q QA
 nnoremap <buffer> Z :QA<cr>
 nnoremap <buffer> ZZ :QA<cr>
 nnoremap <buffer> <silent> <CR> :call KnoteOpen()<cr>
+nnoremap <buffer> <silent> d :call KnoteDelete()<cr>
 
 let s:statuswin = win_getid()
 let s:mainwin = win_getid(winnr('$'))
@@ -246,6 +277,7 @@ let s:appwinlayout = winrestcmd()
 silent execute 'cd ' . s:rootpath
 
 nnoremap <silent> <Leader>n :call KnoteCreateNew()<cr>
+nnoremap <silent> <Leader>N :call KnoteCreateNotebook()<cr>
 nnoremap <silent> <Leader>t :qa<cr>
-nnoremap <silent> <Leader>d :call KnoteDeleteNote()<cr>
+nnoremap <silent> <Leader>d :call KnoteDeleteNote(expand('%:p'))<cr>
 nnoremap <silent> <Leader>r :call KnoteRenameNote()<cr>
