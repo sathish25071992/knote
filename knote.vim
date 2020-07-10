@@ -30,11 +30,11 @@ let s:banner = [
 \	"Please select one of note from the left status bar",
 \	" ",
 \	"Available shortcuts:",
-\	"    \\n - Create new note            ",
-\	"    \\N - Create new notebook        ",
-\	"    \\r - Rename the existing note   ",
-\	"    \\d - Delete the existing note   ",
-\	"    \\t - To terminal the application" 
+\	"    \\n - Create new note                    ",
+\	"    \\N - Create new notebook                ",
+\	"    \\r - Rename the existing note           ",
+\	"    \\d - Delete the existing note or notbook",
+\	"    \\t - To terminal the application        " 
 \]
 
 " Util functions
@@ -74,11 +74,15 @@ endfunction
 function! KnoteDeleteNote(filename)
     if win_getid() != s:statuswin
         silent execute win_id2win(s:mainwin).'q'
+	else
+		call KnoteDelete()
+		return
     endif
-    call delete(filename)
-    echo "Deleted the note ".filename
+    call delete(a:filename)
+    echo "Deleted the note ".a:filename
     call UpdateList()
     call KnoteListRender()
+	silent execute "bdelete " . a:filename
 endfunction
 
 function! KnoteRenameNote()
@@ -256,16 +260,22 @@ function KnoteDelete()
         endif
         if delete(fnamemodify(res["path"], ":p"), "d") < 0
             call inputsave()
-            let confirm = input("Directory is not empty. Please Type 'yes' to confirm to delete? ")
+            let confirm = input("Notebook is not empty. Please Type 'yes' to confirm to delete? ")
             if confirm != "yes"
                 return
             endif
             call inputrestore()
-            let ret = delete(fnamemodify(res["path"], ":p"), "rf")
+			let nbaname = fnamemodify(res["path"], ":p")
+			for x in systemlist("ls -p " . nbaname . "|grep -v /$")
+				silent execute "bdelete ".nbaname.x
+			endfor
+            let ret = delete(nbaname, "rf")
         endif
         echo " | Removed ".res["path"]
     else
-        let ret = delete(fnamemodify(res["path"].res["file"], ":p"))
+		let fname = fnamemodify(res["path"].res["file"], ":p")
+        let ret = delete(fname)
+		execute "bdelete " . fname
     endif
     if ret < 0
         echo "Unable to delete note/notebook ".line
