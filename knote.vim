@@ -4,6 +4,24 @@ let s:KnoteNotebookArrow = [s:KnoteNotebookArrowClose, s:KnoteNotebookArrowOpen]
 let s:rootpath = "~/utils/knote/"
 let s:KnoteTree = {}
 
+" Custom statusline
+hi statusline guibg=NONE gui=NONE ctermbg=NONE cterm=NONE ctermfg=247
+hi statuslineNC guibg=NONE gui=NONE ctermbg=NONE cterm=NONE ctermfg=237
+hi User1 ctermfg=16 ctermbg=247
+hi User2 ctermfg=245 ctermbg=234
+hi User3 ctermbg=NONE
+hi User4 ctermfg=166
+
+au InsertEnter * hi User1 ctermbg=166
+au InsertLeave * hi User1 ctermbg=247
+
+set statusline=
+set statusline+=%1*\ %{ModeCurrent()}\                   " The current mode
+set statusline+=%2*\ %<%F%m%r%h%w\                       " File path, modified, readonly, helpfile, preview
+set statusline+=%3*\                                     " FileFormat (dos/unix..)
+set statusline+=%=                                       " Right Side
+set statusline+=%4*\ %02l/%L:%02v\ (%3p%%)\              " Line number / total lines:column number, percentage of document
+
 let s:banner = [
 \	"Welcome to the KNote - A simple note taking Plugin",
 \   " ",
@@ -18,6 +36,11 @@ let s:banner = [
 \	"    \\d - Delete the existing note   ",
 \	"    \\t - To terminal the application" 
 \]
+
+" Util functions
+function! Strip(ip)
+	return substitute(a:ip, '^\s*\(.\{-}\)\s*$', '\1', '')
+endfunction
 
 function! KnoteCreateNew()
     call inputsave()
@@ -100,7 +123,7 @@ function! KnoteListRender()
     for notebook in keys(notetree)
         let content += [s:KnoteNotebookArrow[notetree[notebook].open].' '.notebook]
         if notetree[notebook].open
-            let content += map(notetree[notebook].notes, {_, x -> '  '.x})
+            let content += map(notetree[notebook].notes, '"  ".v:val')
         endif
     endfor
 
@@ -159,7 +182,7 @@ function! KnotePopulateBanner(win, list)
     silent let rowoff = height / 2 - lines / 2
     silent let filler = repeat("\n", height - 1)
 
-    silent let printable_list = map(split(filler, '\zs'), {i, x -> PrintableList(i, x, width, a:list, rowoff)})
+    silent let printable_list = map(split(filler, '\zs'), 'PrintableList(v:key, v:val, width, a:list, rowoff)')
     silent call setline(1, printable_list)
     silent setlocal readonly nomodifiable
     silent let &l:statusline = " "
@@ -200,9 +223,9 @@ function! KnoteFindFilePath()
         if line == s:KnoteNotebookArrow[entry.open]." ".notebook
             let path = (notebook == "General")? "/" : notebook."/"
             return {"type": "nb", "path": s:rootpath.path, "notebook": notebook}
-        elseif entry.open && count(entry.notes, trim(line)) && lineno <= cnt
+        elseif entry.open && count(entry.notes, Strip(line)) && lineno <= cnt
             let notebook = (notebook == "General")? "/" : notebook."/"
-            return {"type": "n", "path": s:rootpath.notebook, "file": trim(line)}
+            return {"type": "n", "path": s:rootpath.notebook, "file": Strip(line)}
         endif
     endfor
 endfunction
@@ -260,11 +283,11 @@ highlight link knoteKeyword Directory
 
 setlocal cursorline
 command -bang QA :qa
-cnoreabbrev <buffer> q QA
-nnoremap <buffer> Z :QA<cr>
-nnoremap <buffer> ZZ :QA<cr>
-nnoremap <buffer> <silent> <CR> :call KnoteOpen()<cr>
-nnoremap <buffer> <silent> d :call KnoteDelete()<cr>
+cnoreabbrev <silent> <buffer> q QA
+nnoremap <silent> <buffer> Z :QA<cr>
+nnoremap <silent> <buffer> ZZ :QA<cr>
+nnoremap <silent> <buffer> <silent> <CR> :call KnoteOpen()<cr>
+nnoremap <silent> <buffer> <silent> d :call KnoteDelete()<cr>
 
 let s:statuswin = win_getid()
 let s:mainwin = win_getid(winnr('$'))
