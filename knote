@@ -1,0 +1,2 @@
+#!/bin/sh
+vim -c "source $(dirname "$0")/knote.vim"

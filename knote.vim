@@ -108,7 +108,7 @@ function! KnoteRenameNote()
 endfunction
 
 function! KnoteOpenSettings()
-	silent execute 'tabe '.s:rootpath.'settings.json'
+	silent execute 'tabe '.s:rootpath.'/settings.json'
 endfunction
 
 function! KnoteGitSync()
@@ -143,6 +143,8 @@ endfunction
 function! KnoteListRender()
     let content = []
     let notetree = deepcopy(s:KnoteTree)
+    let s:KnoteTree  = deepcopy(s:KnoteTree)
+
     let save_cursor = getcurpos()
 
     let curwinbkp = win_getid()
